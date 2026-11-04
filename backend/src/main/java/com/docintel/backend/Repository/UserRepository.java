@@ -1,9 +1,9 @@
-package com.docintel.backend.User.Repository;
+package com.docintel.backend.Repository;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.docintel.backend.User.Entity.User;
+import com.docintel.backend.Entity.User;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 

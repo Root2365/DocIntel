@@ -1,8 +1,6 @@
-package com.docintel.backend.Document.Entity;
+package com.docintel.backend.Entity;
 
 import java.time.LocalDateTime;
-
-import com.docintel.backend.User.Entity.User;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -24,10 +22,10 @@ import lombok.Setter;
 @Table(name = "documents")
 @Getter
 @Setter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class Document {
+public class PdfDocument {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -44,6 +42,9 @@ public class Document {
 
     @Column(nullable = false)
     private Long fileSize;
+
+    @Column(nullable = false)
+    private String status;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id", nullable = false)

@@ -1,9 +1,7 @@
-package com.docintel.backend.User.Entity;
+package com.docintel.backend.Entity;
 
 import java.time.LocalDateTime;
 import java.util.List;
-
-import com.docintel.backend.Document.Entity.Document;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -31,7 +29,7 @@ import lombok.Setter;
 public class User {
 
     @OneToMany(mappedBy = "owner")
-    private List<Document> documents;
+    private List<PdfDocument> documents;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
