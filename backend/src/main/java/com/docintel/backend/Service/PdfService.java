@@ -35,166 +35,284 @@ public class PdfService {
 
     private static final Path UPLOAD_DIRECTORY =
             Path.of("uploads").toAbsolutePath().normalize();
-    private static final byte[] PDF_HEADER = {'%', 'P', 'D', 'F', '-'};
+
+    private static final byte[] PDF_HEADER = {
+            '%', 'P', 'D', 'F', '-'
+    };
 
     private final PdfRepository pdfRepository;
     private final UserRepository userRepository;
+    private final PdfProcessingService pdfProcessingService;
 
     @PostConstruct
     public void initializeUploadDirectory() {
+
         try {
+
             Files.createDirectories(UPLOAD_DIRECTORY);
+
         } catch (IOException ex) {
+
             throw new UncheckedIOException(
-                    "Could not create the uploads directory", ex);
+                    "Could not create the uploads directory",
+                    ex
+            );
         }
     }
 
     @Transactional
     public PdfDocument upload(MultipartFile file) {
+
         if (file == null || file.isEmpty()) {
-            throw new BadRequestException("The uploaded file is empty.");
+            throw new BadRequestException(
+                    "The uploaded file is empty."
+            );
         }
 
         if (!isPdf(file)) {
-            throw new BadRequestException("The uploaded file is not a PDF.");
+            throw new BadRequestException(
+                    "The uploaded file is not a PDF."
+            );
         }
 
         User owner = getAuthenticatedUser();
+
         String storedFileName = UUID.randomUUID() + ".pdf";
-        Path destination = UPLOAD_DIRECTORY.resolve(storedFileName);
+
+        Path destination =
+                UPLOAD_DIRECTORY.resolve(storedFileName);
 
         try (InputStream input = file.getInputStream()) {
+
             Files.copy(input, destination);
+
         } catch (IOException ex) {
+
             try {
                 Files.deleteIfExists(destination);
             } catch (IOException cleanupException) {
                 ex.addSuppressed(cleanupException);
             }
-            throw new UncheckedIOException("Could not save the uploaded PDF", ex);
+
+            throw new UncheckedIOException(
+                    "Could not save the uploaded PDF",
+                    ex
+            );
         }
 
         PdfDocument document = PdfDocument.builder()
-                .fileName(file.getOriginalFilename() == null
-                        ? storedFileName
-                        : file.getOriginalFilename())
+                .fileName(
+                        file.getOriginalFilename() == null
+                                ? storedFileName
+                                : file.getOriginalFilename()
+                )
                 .storagePath(destination.toString())
                 .contentType("application/pdf")
                 .fileSize(file.getSize())
-                .status("UPLOADED")
+                .status("PENDING")
                 .owner(owner)
                 .build();
 
         try {
-            return pdfRepository.save(document);
+
+            PdfDocument saved =
+                    pdfRepository.save(document);
+
+            pdfProcessingService.processPdfAsync(
+                    saved.getId()
+            );
+
+            return saved;
+
         } catch (RuntimeException ex) {
+
             try {
                 Files.deleteIfExists(destination);
             } catch (IOException cleanupException) {
                 ex.addSuppressed(cleanupException);
             }
+
             throw ex;
         }
     }
 
     @Transactional(readOnly = true)
     public List<PdfDocument> getUserDocuments() {
+
         User user = getAuthenticatedUser();
-        return pdfRepository.findByOwner_IdOrderByUploadedAtDesc(user.getId());
+
+        return pdfRepository
+                .findByOwner_IdOrderByUploadedAtDesc(
+                        user.getId()
+                );
     }
 
     @Transactional(readOnly = true)
     public List<PdfDocument> getAllDocumentsForAdmin() {
+
         requireAdmin(getAuthenticatedUser());
+
         return pdfRepository.findAll(
-                Sort.by(Sort.Direction.DESC, "uploadedAt"));
+                Sort.by(
+                        Sort.Direction.DESC,
+                        "uploadedAt"
+                )
+        );
     }
 
     @Transactional(readOnly = true)
-    public PdfDocument getDocumentMetadata(Long documentId) {
+    public PdfDocument getDocumentMetadata(
+            Long documentId
+    ) {
+
         return getAccessibleDocument(documentId);
     }
 
     @Transactional(readOnly = true)
-    public Resource loadFileAsResource(Long documentId) {
-        PdfDocument document = getAccessibleDocument(documentId);
-        return new FileSystemResource(getStoredFilePath(document));
+    public Resource loadFileAsResource(
+            Long documentId
+    ) {
+
+        PdfDocument document =
+                getAccessibleDocument(documentId);
+
+        return new FileSystemResource(
+                getStoredFilePath(document)
+        );
     }
 
     @Transactional
     public void delete(Long documentId) {
-        PdfDocument document = getAccessibleDocument(documentId);
-        Path filePath = getStoredFilePath(document);
+
+        PdfDocument document =
+                getAccessibleDocument(documentId);
+
+        Path filePath =
+                getStoredFilePath(document);
 
         try {
+
             Files.delete(filePath);
+
         } catch (IOException ex) {
-            throw new UncheckedIOException("Could not delete the PDF file", ex);
+
+            throw new UncheckedIOException(
+                    "Could not delete the PDF file",
+                    ex
+            );
         }
 
         pdfRepository.delete(document);
     }
 
-    private PdfDocument getAccessibleDocument(Long documentId) {
+    private PdfDocument getAccessibleDocument(
+            Long documentId
+    ) {
+
         PdfDocument document = pdfRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "PDF document not found."));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "PDF document not found."
+                        ));
+
         User requester = getAuthenticatedUser();
 
         if (requester.getRole() != Role.ADMIN
-                && !document.getOwner().getId().equals(requester.getId())) {
+                && !document.getOwner()
+                .getId()
+                .equals(requester.getId())) {
+
             throw new AccessDeniedException(
-                    "You do not have permission to access this PDF document.");
+                    "You do not have permission to access this PDF document."
+            );
         }
 
         Path filePath = getStoredFilePath(document);
+
         if (!Files.isRegularFile(filePath)) {
+
             throw new ResourceNotFoundException(
-                    "PDF file not found on disk.");
+                    "PDF file not found on disk."
+            );
         }
 
         return document;
     }
 
-    private Path getStoredFilePath(PdfDocument document) {
-        Path filePath = Path.of(document.getStoragePath())
+    private Path getStoredFilePath(
+            PdfDocument document
+    ) {
+
+        Path filePath = Path.of(
+                        document.getStoragePath())
                 .toAbsolutePath()
                 .normalize();
+
         if (!filePath.startsWith(UPLOAD_DIRECTORY)) {
-            throw new ResourceNotFoundException("PDF file not found.");
+
+            throw new ResourceNotFoundException(
+                    "PDF file not found."
+            );
         }
+
         return filePath;
     }
 
     private User getAuthenticatedUser() {
+
         Authentication authentication =
-                SecurityContextHolder.getContext().getAuthentication();
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
         if (authentication == null
                 || !authentication.isAuthenticated()
-                || !(authentication.getPrincipal() instanceof String email)) {
-            throw new AccessDeniedException("Authentication is required.");
+                || !(authentication.getPrincipal()
+                instanceof String email)) {
+
+            throw new AccessDeniedException(
+                    "Authentication is required."
+            );
         }
 
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new AccessDeniedException(
-                        "The authenticated user could not be found."));
+                .orElseThrow(() ->
+                        new AccessDeniedException(
+                                "The authenticated user could not be found."
+                        ));
     }
 
     private void requireAdmin(User user) {
+
         if (user.getRole() != Role.ADMIN) {
+
             throw new AccessDeniedException(
-                    "Only administrators can access all PDF documents.");
+                    "Only administrators can access all PDF documents."
+            );
         }
     }
 
     private boolean isPdf(MultipartFile file) {
-        try (InputStream input = file.getInputStream()) {
-            byte[] header = input.readNBytes(PDF_HEADER.length);
-            return java.util.Arrays.equals(header, PDF_HEADER);
+
+        try (InputStream input =
+                     file.getInputStream()) {
+
+            byte[] header =
+                    input.readNBytes(
+                            PDF_HEADER.length
+                    );
+
+            return java.util.Arrays.equals(
+                    header,
+                    PDF_HEADER
+            );
+
         } catch (IOException ex) {
+
             throw new UncheckedIOException(
-                    "Could not read the uploaded file", ex);
+                    "Could not read the uploaded file",
+                    ex
+            );
         }
     }
 }
