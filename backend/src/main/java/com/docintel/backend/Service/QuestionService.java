@@ -2,18 +2,18 @@ package com.docintel.backend.Service;
 
 import com.docintel.backend.Dto.QuestionRequest;
 import com.docintel.backend.Dto.QuestionResponse;
-import com.docintel.backend.Entity.DocumentChunk;
 import com.docintel.backend.Entity.PdfDocument;
 import com.docintel.backend.Entity.Role;
 import com.docintel.backend.Entity.User;
-import com.docintel.backend.Repository.DocumentChunkRepository;
 import com.docintel.backend.Repository.PdfRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -21,9 +21,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class QuestionService {
 
-    private final DocumentChunkRepository chunkRepository;
     private final PdfRepository pdfRepository;
-    private final EmbeddingService embeddingService;
+    private final VectorStore vectorStore;
     private final LlmService llmService;
 
     public QuestionResponse askQuestion(
@@ -38,7 +37,7 @@ public class QuestionService {
 
         List<Long> userOwnedDocIds = userDocuments.stream()
                 .map(PdfDocument::getId)
-                .toList();
+                .collect(Collectors.toList());
 
         List<Long> searchDocIds;
 
@@ -47,8 +46,7 @@ public class QuestionService {
 
             if (currentUser.getRole() != Role.ADMIN) {
 
-                for (Long requestedId :
-                        request.getDocumentIds()) {
+                for (Long requestedId : request.getDocumentIds()) {
 
                     if (!userOwnedDocIds.contains(requestedId)) {
 
@@ -75,42 +73,31 @@ public class QuestionService {
                     .build();
         }
 
-        List<DocumentChunk> chunks =
-                chunkRepository.findByDocument_IdIn(
-                        searchDocIds
+        String filterExpression =
+                "documentId in [" +
+                        searchDocIds.stream()
+                                .map(String::valueOf)
+                                .collect(Collectors.joining(",")) +
+                        "]";
+
+        List<Document> matches =
+                vectorStore.similaritySearch(
+                        SearchRequest.builder()
+                                .query(request.getQuestion())
+                                .topK(3)
+                                .filterExpression(filterExpression)
+                                .build()
                 );
 
-        if (chunks.isEmpty()) {
+        if (matches == null || matches.isEmpty()) {
 
             return QuestionResponse.builder()
-                    .answer("No indexed document content found.")
+                    .answer(
+                            "No relevant information was found in the selected documents."
+                    )
                     .citations(List.of())
                     .build();
         }
-
-        List<Float> queryEmbedding =
-                embeddingService.generateEmbedding(
-                        request.getQuestion()
-                );
-
-        List<ScoredChunk> scoredChunks =
-                chunks.stream()
-                        .map(chunk -> new ScoredChunk(
-                                chunk,
-                                cosineSimilarity(
-                                        queryEmbedding,
-                                        parseEmbedding(
-                                                chunk.getEmbedding()
-                                        )
-                                )
-                        ))
-                        .sorted(
-                                Comparator.comparingDouble(
-                                        ScoredChunk::score
-                                ).reversed()
-                        )
-                        .limit(3)
-                        .toList();
 
         StringBuilder contextBuilder =
                 new StringBuilder();
@@ -118,30 +105,38 @@ public class QuestionService {
         List<QuestionResponse.Citation> citations =
                 new ArrayList<>();
 
-        for (ScoredChunk scored : scoredChunks) {
+        for (Document match : matches) {
 
-            DocumentChunk chunk = scored.chunk();
+            String content = match.getText();
 
-            PdfDocument document =
-                    chunk.getDocument();
+            Long documentId =
+                    Long.parseLong(
+                            match.getMetadata()
+                                    .get("documentId")
+                                    .toString()
+                    );
 
-            contextBuilder.append(
-                    "[Source: "
-            ).append(
-                    document.getFileName()
-            ).append(
-                    ", Page: "
-            ).append(
-                    chunk.getPageNumber()
-            ).append(
-                    "]\n"
-            ).append(
-                    chunk.getContent()
-            ).append(
-                    "\n\n"
-            );
+            String fileName =
+                    match.getMetadata()
+                            .get("fileName")
+                            .toString();
 
-            String snippet = chunk.getContent();
+            int pageNumber =
+                    Integer.parseInt(
+                            match.getMetadata()
+                                    .get("pageNumber")
+                                    .toString()
+                    );
+
+            contextBuilder.append("[Source: ")
+                    .append(fileName)
+                    .append(", Page: ")
+                    .append(pageNumber)
+                    .append("]\n")
+                    .append(content)
+                    .append("\n\n");
+
+            String snippet = content;
 
             if (snippet.length() > 200) {
                 snippet = snippet.substring(0, 200) + "...";
@@ -149,20 +144,17 @@ public class QuestionService {
 
             citations.add(
                     new QuestionResponse.Citation(
-                            document.getId(),
-                            document.getFileName(),
-                            chunk.getPageNumber(),
+                            documentId,
+                            fileName,
+                            pageNumber,
                             snippet
                     )
             );
         }
 
-        String context =
-                contextBuilder.toString();
-
         String answer =
                 llmService.generateAnswer(
-                        context,
+                        contextBuilder.toString(),
                         request.getQuestion()
                 );
 
@@ -170,76 +162,5 @@ public class QuestionService {
                 .answer(answer)
                 .citations(citations)
                 .build();
-    }
-
-    private List<Float> parseEmbedding(
-            String embeddingText
-    ) {
-
-        if (embeddingText == null
-                || embeddingText.isBlank()) {
-
-            return List.of();
-        }
-
-        String cleaned = embeddingText
-                .replace("[", "")
-                .replace("]", "")
-                .trim();
-
-        if (cleaned.isBlank()) {
-            return List.of();
-        }
-
-        return java.util.Arrays.stream(
-                        cleaned.split(","))
-                .map(String::trim)
-                .map(Float::parseFloat)
-                .collect(Collectors.toList());
-    }
-
-    private double cosineSimilarity(
-            List<Float> vectorA,
-            List<Float> vectorB
-    ) {
-
-        if (vectorA.isEmpty()
-                || vectorB.isEmpty()) {
-
-            return 0.0;
-        }
-
-        int dimensions = Math.min(
-                vectorA.size(),
-                vectorB.size()
-        );
-
-        double dotProduct = 0.0;
-        double normA = 0.0;
-        double normB = 0.0;
-
-        for (int i = 0; i < dimensions; i++) {
-
-            double a = vectorA.get(i);
-            double b = vectorB.get(i);
-
-            dotProduct += a * b;
-            normA += a * a;
-            normB += b * b;
-        }
-
-        if (normA == 0 || normB == 0) {
-            return 0.0;
-        }
-
-        return dotProduct /
-                (Math.sqrt(normA)
-                        * Math.sqrt(normB));
-    }
-
-    private record ScoredChunk(
-            DocumentChunk chunk,
-            double score
-    ) {
     }
 }

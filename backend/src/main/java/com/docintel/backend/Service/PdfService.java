@@ -1,3 +1,4 @@
+
 package com.docintel.backend.Service;
 
 import java.io.IOException;
@@ -16,6 +17,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.docintel.backend.Common.Exception.BadRequestException;
@@ -23,11 +26,13 @@ import com.docintel.backend.Common.Exception.ResourceNotFoundException;
 import com.docintel.backend.Entity.PdfDocument;
 import com.docintel.backend.Entity.Role;
 import com.docintel.backend.Entity.User;
+import com.docintel.backend.Repository.DocumentChunkRepository;
 import com.docintel.backend.Repository.PdfRepository;
 import com.docintel.backend.Repository.UserRepository;
 
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.springframework.ai.vectorstore.VectorStore;
 
 @Service
 @RequiredArgsConstructor
@@ -43,6 +48,8 @@ public class PdfService {
     private final PdfRepository pdfRepository;
     private final UserRepository userRepository;
     private final PdfProcessingService pdfProcessingService;
+    private final DocumentChunkRepository documentChunkRepository;
+    private final VectorStore vectorStore;
 
     @PostConstruct
     public void initializeUploadDirectory() {
@@ -118,8 +125,18 @@ public class PdfService {
             PdfDocument saved =
                     pdfRepository.save(document);
 
-            pdfProcessingService.processPdfAsync(
-                    saved.getId()
+            // Start PDF processing only after the database commits
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+
+                        @Override
+                        public void afterCommit() {
+
+                            pdfProcessingService.processPdfAsync(
+                                    saved.getId()
+                            );
+                        }
+                    }
             );
 
             return saved;
@@ -192,7 +209,7 @@ public class PdfService {
 
         try {
 
-            Files.delete(filePath);
+            Files.deleteIfExists(filePath);
 
         } catch (IOException ex) {
 
@@ -201,6 +218,19 @@ public class PdfService {
                     ex
             );
         }
+
+        List<String> vectorIds =
+                documentChunkRepository
+                        .findByDocument_IdOrderByChunkIndexAsc(document.getId())
+                        .stream()
+                        .map(chunk -> chunk.getId().toString())
+                        .toList();
+
+        if (!vectorIds.isEmpty()) {
+            vectorStore.delete(vectorIds);
+        }
+
+        documentChunkRepository.deleteByDocument_Id(document.getId());
 
         pdfRepository.delete(document);
     }
