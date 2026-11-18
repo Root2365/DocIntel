@@ -18,4 +18,6 @@ public class QuestionRequest {
     private String question;
 
     private List<Long> documentIds;
+
+    private Long sessionId;
 }
