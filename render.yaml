@@ -1,0 +1,104 @@
+# render.yaml — Render Infrastructure as Code
+# Docs: https://render.com/docs/render-yaml-reference
+#
+# HOW TO USE:
+#   1. Push this file to your repo root.
+#   2. In Render dashboard → New → Blueprint → connect your repo.
+#   3. Set the secret env vars listed below in Render's Environment tab:
+#      JWT_SECRET, GEMINI_API_KEY, DB_PASSWORD (if overriding)
+
+services:
+  # ── Backend (Spring Boot via Docker) ───────────────────────────────────────
+  - type: web
+    name: docintel-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile       # repo-root Dockerfile
+    dockerContext: .                   # repo root as build context
+    region: singapore                  # change to your preferred region
+    plan: free                         # upgrade to starter for persistent disk
+
+    envVars:
+      # ── Database (Render managed PostgreSQL — see db section below) ──────
+      - key: DB_HOST
+        fromDatabase:
+          name: docintel-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: docintel-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: docintel-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: docintel-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: docintel-db
+          property: password
+
+      # ── JWT ──────────────────────────────────────────────────────────────
+      - key: JWT_SECRET
+        sync: false           # set manually in Render dashboard (secret)
+
+      # ── Gemini AI ────────────────────────────────────────────────────────
+      - key: GEMINI_API_KEY
+        sync: false           # set manually in Render dashboard (secret)
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
+      - key: GEMINI_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+      - key: AI_PROVIDER
+        value: GEMINI
+
+      # ── Vector store dimensions ───────────────────────────────────────────
+      - key: VECTOR_DIMENSIONS
+        value: "768"
+
+      # ── CORS (set to your frontend URL after deploying frontend) ─────────
+      - key: CORS_ALLOWED_ORIGINS
+        value: http://localhost:5173    # update after frontend is live
+
+      # ── Ollama (not used on Render; Gemini embeddings are used) ──────────
+      - key: OLLAMA_BASE_URL
+        value: http://localhost:11434   # unused when AI_PROVIDER=GEMINI
+
+    healthCheckPath: /actuator/health
+
+    disk:
+      name: uploads
+      mountPath: /app/uploads
+      sizeGB: 1                        # increase as needed
+
+  # ── Static Frontend (Vite build) ───────────────────────────────────────────
+  - type: web
+    name: docintel-frontend
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./frontend/dist
+    rootDir: frontend
+    region: singapore
+
+    envVars:
+      - key: VITE_API_URL
+        value: https://docintel-backend.onrender.com/api   # replace with your backend URL
+
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html       # SPA fallback for React Router
+
+# ── Managed PostgreSQL with pgvector ───────────────────────────────────────
+databases:
+  - name: docintel-db
+    plan: free
+    region: singapore
+    databaseName: docintel
+    postgresMajorVersion: 16
+
+    # NOTE: pgvector extension must be enabled after first deploy:
+    #   In Render dashboard → docintel-db → Shell:
+    #   CREATE EXTENSION IF NOT EXISTS vector;

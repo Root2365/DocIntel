@@ -11,6 +11,8 @@ import com.docintel.backend.Entity.User;
 import com.docintel.backend.Repository.ChatMessageRepository;
 import com.docintel.backend.Repository.ChatSessionRepository;
 import com.docintel.backend.Repository.PdfRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -18,6 +20,7 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -56,6 +59,20 @@ public class QuestionService {
         return chatSessionRepository.findByUser_IdOrderByCreatedAtDesc(
                 currentUser.getId()
         );
+    }
+
+    @Transactional
+    public ChatSession renameSession(Long sessionId, String newTitle, User currentUser) {
+        ChatSession session = getOwnedSession(sessionId, currentUser);
+        session.setTitle(newTitle != null && !newTitle.isBlank() ? newTitle.trim() : "Untitled Chat");
+        return chatSessionRepository.save(session);
+    }
+
+    @Transactional
+    public void deleteSession(Long sessionId, User currentUser) {
+        ChatSession session = getOwnedSession(sessionId, currentUser);
+        chatMessageRepository.deleteBySession_Id(sessionId);
+        chatSessionRepository.delete(session);
     }
 
     public List<ChatMessage> getSessionMessages(

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import api from '../lib/api'
 import toast from 'react-hot-toast'
-import { Mail, Lock, User, UserPlus, Sun, Moon, FileText } from 'lucide-react'
+import { Mail, Lock, User, UserPlus, Sun, Moon, FileText, ArrowLeft } from 'lucide-react'
 
 export default function Register() {
   const [name, setName] = useState('')
@@ -63,6 +63,15 @@ export default function Register() {
         </button>
 
         <div className="w-full max-w-sm">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-xs font-medium mb-6 transition-colors hover:text-indigo-400"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <ArrowLeft size={14} />
+            <span>Back to Home</span>
+          </Link>
+
           <div className="lg:hidden flex items-center gap-3 mb-8">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'var(--accent)' }}>
               <FileText className="w-5 h-5 text-white" />

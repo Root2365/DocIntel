@@ -6,9 +6,11 @@ import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -129,6 +131,38 @@ public class ChatController {
                         "Chat messages retrieved successfully",
                         messages
                 )
+        );
+    }
+
+    @PutMapping("/sessions/{id}")
+    public ResponseEntity<Response<ChatSessionView>> renameSession(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> payload,
+            Authentication authentication
+    ) {
+        User user = getCurrentUser(authentication);
+        String title = "Untitled Chat";
+        if (payload != null && payload.containsKey("title") && payload.get("title") != null && !payload.get("title").isBlank()) {
+            title = payload.get("title").trim();
+        }
+        ChatSession session = questionService.renameSession(id, title, user);
+        return ResponseEntity.ok(
+                Response.success(
+                        "Chat session renamed successfully",
+                        toChatSessionView(session)
+                )
+        );
+    }
+
+    @DeleteMapping("/sessions/{id}")
+    public ResponseEntity<Response<Void>> deleteSession(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        User user = getCurrentUser(authentication);
+        questionService.deleteSession(id, user);
+        return ResponseEntity.ok(
+                Response.success("Chat session deleted successfully")
         );
     }
 

@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar'
 import ChatView from '../components/ChatView'
 import DocumentsView from '../components/DocumentsView'
 import api from '../lib/api'
+import toast from 'react-hot-toast'
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
@@ -13,6 +14,7 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState([])
   const [activeSession, setActiveSession] = useState(null)
   const [documents, setDocuments] = useState([])
+  const [selectedDocs, setSelectedDocs] = useState([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   useEffect(() => {
@@ -23,7 +25,11 @@ export default function Dashboard() {
   const loadSessions = async () => {
     try {
       const res = await api.get('/chat/sessions')
-      setSessions(res.data.data || [])
+      const fetched = res.data.data || []
+      setSessions(fetched)
+      if (fetched.length > 0 && !activeSession) {
+        // Do not auto-force active session if user wants a clean new chat
+      }
     } catch {
       setSessions([])
     }
@@ -47,8 +53,48 @@ export default function Dashboard() {
       setView('chat')
       return newSession
     } catch {
+      toast.error('Failed to create new session')
       return null
     }
+  }
+
+  const renameSession = async (sessionId, newTitle) => {
+    if (!newTitle || !newTitle.trim()) return
+    try {
+      const res = await api.put(`/chat/sessions/${sessionId}`, { title: newTitle.trim() })
+      const updated = res.data.data
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, title: updated.title } : s))
+      )
+      if (activeSession?.id === sessionId) {
+        setActiveSession((prev) => (prev ? { ...prev, title: updated.title } : prev))
+      }
+      toast.success('Chat renamed')
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to rename chat')
+    }
+  }
+
+  const deleteSession = async (sessionId) => {
+    try {
+      await api.delete(`/chat/sessions/${sessionId}`)
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+      if (activeSession?.id === sessionId) {
+        const remaining = sessions.filter((s) => s.id !== sessionId)
+        setActiveSession(remaining.length > 0 ? remaining[0] : null)
+      }
+      toast.success('Chat deleted')
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete chat')
+    }
+  }
+
+  const navigateToChatWithDoc = (doc) => {
+    if (doc?.id) {
+      setSelectedDocs([doc.id])
+    }
+    setView('chat')
+    toast.success(`Selected "${doc.fileName}" for chat`)
   }
 
   return (
@@ -57,8 +103,13 @@ export default function Dashboard() {
         user={user}
         sessions={sessions}
         activeSession={activeSession}
-        setActiveSession={(s) => { setActiveSession(s); setView('chat') }}
+        setActiveSession={(s) => {
+          setActiveSession(s)
+          setView('chat')
+        }}
         createSession={createSession}
+        renameSession={renameSession}
+        deleteSession={deleteSession}
         view={view}
         setView={setView}
         theme={theme}
@@ -74,7 +125,12 @@ export default function Dashboard() {
             session={activeSession}
             setActiveSession={setActiveSession}
             createSession={createSession}
+            renameSession={renameSession}
+            deleteSession={deleteSession}
             documents={documents}
+            loadDocuments={loadDocuments}
+            selectedDocs={selectedDocs}
+            setSelectedDocs={setSelectedDocs}
             sidebarOpen={sidebarOpen}
             setSidebarOpen={setSidebarOpen}
           />
@@ -82,6 +138,7 @@ export default function Dashboard() {
           <DocumentsView
             documents={documents}
             loadDocuments={loadDocuments}
+            navigateToChatWithDoc={navigateToChatWithDoc}
             sidebarOpen={sidebarOpen}
             setSidebarOpen={setSidebarOpen}
           />

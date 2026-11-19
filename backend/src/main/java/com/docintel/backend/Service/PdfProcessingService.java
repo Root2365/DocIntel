@@ -64,7 +64,7 @@ public class PdfProcessingService {
 
             List<Document> vectorDocuments = savedChunks.stream()
                     .map(chunk -> Document.builder()
-                            .id(chunk.getId().toString())
+                            .id(VectorStoreDocumentId.fromChunkId(chunk.getId()))
                             .text(chunk.getContent())
                             .metadata(Map.of(
                                     "documentId", documentId,

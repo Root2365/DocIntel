@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
+import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
@@ -13,7 +14,7 @@ function ProtectedRoute({ children }) {
 
 function PublicRoute({ children }) {
   const { token } = useAuth()
-  return token ? <Navigate to="/" replace /> : children
+  return token ? <Navigate to="/dashboard" replace /> : children
 }
 
 function App() {
@@ -32,6 +33,10 @@ function App() {
             }}
           />
           <Routes>
+            {/* Landing / Home Page */}
+            <Route path="/" element={<Home />} />
+
+            {/* Auth Routes */}
             <Route
               path="/login"
               element={
@@ -48,14 +53,19 @@ function App() {
                 </PublicRoute>
               }
             />
+
+            {/* Authenticated Dashboard Workspace */}
             <Route
-              path="/*"
+              path="/dashboard/*"
               element={
                 <ProtectedRoute>
                   <Dashboard />
                 </ProtectedRoute>
               }
             />
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

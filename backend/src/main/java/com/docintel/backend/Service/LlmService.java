@@ -72,13 +72,26 @@ public class LlmService {
                 + question
                 + "\n</user_question>";
 
-        try {
-            if ("gemini".equalsIgnoreCase(provider)
-                    && geminiApiKey != null
-                    && !geminiApiKey.isBlank()) {
-                return callGeminiOpenAI(prompt);
+        if ("gemini".equalsIgnoreCase(provider)) {
+            if (geminiApiKey == null || geminiApiKey.isBlank()) {
+                log.error("AI provider [GEMINI] is selected but GEMINI_API_KEY is not configured");
+                return "The AI service is not configured. Set GEMINI_API_KEY on the backend and try again.";
             }
-            return callOllama(prompt);
+
+            try {
+                return callGeminiOpenAI(prompt);
+            } catch (Exception ex) {
+                log.error("AI provider [GEMINI] failed to generate answer: {}", ex.getMessage(), ex);
+                return "I'm sorry, the AI service is currently unavailable. Please try again later.";
+            }
+        }
+
+        try {
+            if ("ollama".equalsIgnoreCase(provider)) {
+                return callOllama(prompt);
+            }
+
+            throw new IllegalStateException("Unsupported AI provider: " + provider);
         } catch (Exception ex) {
             log.error("AI provider [{}] failed to generate answer: {}", provider, ex.getMessage(), ex);
             return "I'm sorry, the AI service is currently unavailable. Please try again later.";

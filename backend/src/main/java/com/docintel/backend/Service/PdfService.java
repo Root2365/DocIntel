@@ -223,7 +223,7 @@ public class PdfService {
                 documentChunkRepository
                         .findByDocument_IdOrderByChunkIndexAsc(document.getId())
                         .stream()
-                        .map(chunk -> chunk.getId().toString())
+                        .map(chunk -> VectorStoreDocumentId.fromChunkId(chunk.getId()))
                         .toList();
 
         if (!vectorIds.isEmpty()) {
