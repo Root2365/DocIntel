@@ -195,7 +195,9 @@ This repository includes a preconfigured **`render.yaml`** blueprint:
 4. Add your secrets in the backend service Environment settings:
    - `JWT_SECRET`
    - `GEMINI_API_KEY`
-5. Enable `pgvector` in the Render PostgreSQL database shell:
+   - `ADMIN_BOOTSTRAP_EMAIL` (defaults to `test@gmail.com`)
+5. Register the bootstrap email if it does not already have an account. It receives administrator access during registration; if the account already exists, signing in promotes it. Sign out and back in to refresh the token and show the admin controls.
+6. Enable `pgvector` in the Render PostgreSQL database shell:
    ```sql
    CREATE EXTENSION IF NOT EXISTS vector;
    ```
@@ -210,6 +212,14 @@ This repository includes a preconfigured **`render.yaml`** blueprint:
 | `POST` | `/api/auth/register` | Register a new user (`name`, `email`, `password`) &rarr; JWT token |
 | `POST` | `/api/auth/login` | Authenticate user (`email`, `password`) &rarr; JWT token |
 
+### 🛡️ Administrator User Management (`/api/admin/users`)
+*(Requires an administrator account.)*
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/admin/users` | List users and their roles (passwords are never returned) |
+| `PATCH` | `/api/admin/users/{userId}/role` | Set a user's role with `{ "role": "ADMIN" }` or `{ "role": "USER" }` |
+
 ### 📄 PDF Document Management (`/api/pdf`)
 *(Requires `Authorization: Bearer <token>`)*
 
@@ -217,8 +227,9 @@ This repository includes a preconfigured **`render.yaml`** blueprint:
 |---|---|---|
 | `POST` | `/api/pdf/upload` | Upload PDF (multipart/form-data with `file`) |
 | `GET` | `/api/pdf` | List all uploaded documents for the authenticated user |
+| `GET` | `/api/pdf/admin/all` | List all users' PDF documents with uploader details (admin only) |
 | `GET` | `/api/pdf/{id}` | Retrieve document metadata and processing status (`READY`, `PROCESSING`, `FAILED`) |
-| `GET` | `/api/pdf/{id}/download` | Stream and download original PDF document |
+| `GET` | `/api/pdf/{id}/download` | Download a PDF owned by the authenticated user or any PDF as an admin |
 | `DELETE` | `/api/pdf/{id}` | Delete document file, database chunks, and vector store embeddings |
 
 ### 💬 AI Chat & Sessions (`/api/chat`)
@@ -250,6 +261,7 @@ This repository includes a preconfigured **`render.yaml`** blueprint:
 | `DB_USERNAME` | `postgres` | Database username |
 | `DB_PASSWORD` | `password` | Database password |
 | `JWT_SECRET` | *(required)* | Secret HMAC key for signing JWT tokens |
+| `ADMIN_BOOTSTRAP_EMAIL` | `test@gmail.com` | Account granted administrator access at registration or sign-in; cannot be demoted |
 | `AI_PROVIDER` | `GEMINI` | Choice of `GEMINI` or `OLLAMA` |
 | `GEMINI_API_KEY` | *(empty)* | Google AI Studio Gemini API Key |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model name |

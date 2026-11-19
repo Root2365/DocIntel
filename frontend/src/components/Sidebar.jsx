@@ -5,6 +5,7 @@ import {
   FileText,
   MessageCircle,
   FolderOpen,
+  ShieldCheck,
   LogOut,
   Sun,
   Moon,
@@ -151,6 +152,20 @@ export default function Sidebar({
               <FolderOpen size={16} />
               Documents
             </button>
+            {user?.role === 'ADMIN' && (
+              <button
+                onClick={() => setView('admin')}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all cursor-pointer"
+                style={{
+                  backgroundColor: view === 'admin' ? 'var(--accent-light)' : 'transparent',
+                  color: view === 'admin' ? 'var(--accent)' : 'var(--text-secondary)',
+                  fontWeight: view === 'admin' ? 600 : 400,
+                }}
+              >
+                <ShieldCheck size={16} />
+                Admin controls
+              </button>
+            )}
           </div>
 
           {/* Sessions list */}
@@ -272,7 +287,7 @@ export default function Sidebar({
                   {user?.email}
                 </p>
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {user?.role}
+                  {user?.role === 'ADMIN' ? 'Admin' : 'User'}
                 </p>
               </div>
             </div>

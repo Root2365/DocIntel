@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.docintel.backend.Common.Response;
+import com.docintel.backend.Dto.AdminPdfResponse;
 import com.docintel.backend.Dto.PdfResponse;
 import com.docintel.backend.Entity.PdfDocument;
 import com.docintel.backend.Service.PdfService;
@@ -54,10 +55,8 @@ public class PdfController {
 
     @GetMapping("/admin/all")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Response<List<PdfResponse>>> getAllDocumentsForAdmin() {
-        List<PdfResponse> documents = pdfService.getAllDocumentsForAdmin().stream()
-                .map(PdfResponse::from)
-                .toList();
+    public ResponseEntity<Response<List<AdminPdfResponse>>> getAllDocumentsForAdmin() {
+        List<AdminPdfResponse> documents = pdfService.getAllDocumentsForAdmin();
         return ResponseEntity.ok(
                 Response.success("PDF documents retrieved successfully", documents));
     }

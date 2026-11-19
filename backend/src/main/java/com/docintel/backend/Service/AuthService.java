@@ -6,6 +6,7 @@ import com.docintel.backend.Entity.Role;
 import com.docintel.backend.Entity.User;
 import com.docintel.backend.Repository.UserRepository;
 import com.docintel.backend.Dto.AuthRequest;
+import org.springframework.beans.factory.annotation.Value;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,9 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+
+    @Value("${docintel.admin.bootstrap-email:test@gmail.com}")
+    private String bootstrapAdminEmail;
 
     /**
      * Register a new user
@@ -40,7 +44,7 @@ public class AuthService {
                                 request.getPassword()
                         )
                 )
-                .role(Role.USER)
+                .role(isBootstrapAdminEmail(request.getEmail()) ? Role.ADMIN : Role.USER)
                 .build();
 
         userRepository.save(user);
@@ -72,7 +76,17 @@ public class AuthService {
             );
         }
 
+        if (isBootstrapAdminEmail(user.getEmail())
+                && user.getRole() != Role.ADMIN) {
+            user.setRole(Role.ADMIN);
+            userRepository.save(user);
+        }
+
         return jwtService.generateToken(user);
+    }
+
+    private boolean isBootstrapAdminEmail(String email) {
+        return email != null && email.equalsIgnoreCase(bootstrapAdminEmail);
     }
 
 }

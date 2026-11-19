@@ -23,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.docintel.backend.Common.Exception.BadRequestException;
 import com.docintel.backend.Common.Exception.ResourceNotFoundException;
+import com.docintel.backend.Dto.AdminPdfResponse;
 import com.docintel.backend.Entity.PdfDocument;
 import com.docintel.backend.Entity.Role;
 import com.docintel.backend.Entity.User;
@@ -165,16 +166,14 @@ public class PdfService {
     }
 
     @Transactional(readOnly = true)
-    public List<PdfDocument> getAllDocumentsForAdmin() {
+    public List<AdminPdfResponse> getAllDocumentsForAdmin() {
 
         requireAdmin(getAuthenticatedUser());
 
-        return pdfRepository.findAll(
-                Sort.by(
-                        Sort.Direction.DESC,
-                        "uploadedAt"
-                )
-        );
+        return pdfRepository.findAllByOrderByUploadedAtDesc()
+                .stream()
+                .map(AdminPdfResponse::from)
+                .toList();
     }
 
     @Transactional(readOnly = true)

@@ -109,8 +109,12 @@ public class LlmService {
         message.put("role", "user");
         message.put("content", prompt);
 
+        String modelName = (geminiModel != null && !geminiModel.isBlank())
+                ? geminiModel.trim().toLowerCase()
+                : "gemini-2.0-flash";
+
         Map<String, Object> request = new LinkedHashMap<>();
-        request.put("model", geminiModel);
+        request.put("model", modelName);
         request.put("messages", List.of(message));
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);

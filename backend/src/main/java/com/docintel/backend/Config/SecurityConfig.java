@@ -41,7 +41,7 @@ public class SecurityConfig {
                 .map(String::trim)
                 .toList();
         config.setAllowedOrigins(origins);
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -67,6 +67,7 @@ public class SecurityConfig {
 
                         // Admin-only endpoints
                         .requestMatchers("/api/pdf/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
                         // Everything else requires authentication
                         .anyRequest().authenticated()

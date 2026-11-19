@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext'
 import Sidebar from '../components/Sidebar'
 import ChatView from '../components/ChatView'
 import DocumentsView from '../components/DocumentsView'
+import AdminUsersView from '../components/AdminUsersView'
 import api from '../lib/api'
 import toast from 'react-hot-toast'
 
@@ -120,7 +121,9 @@ export default function Dashboard() {
       />
 
       <main className="flex-1 flex flex-col min-w-0">
-        {view === 'chat' ? (
+        {view === 'admin' && user?.role === 'ADMIN' ? (
+          <AdminUsersView />
+        ) : view === 'chat' ? (
           <ChatView
             session={activeSession}
             setActiveSession={setActiveSession}
