@@ -1,6 +1,5 @@
 package com.docintel.backend.Config;
 
-
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
@@ -14,12 +13,15 @@ import org.springframework.stereotype.Component;
 import com.docintel.backend.Entity.User;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 
 @Component
+@Slf4j
 public class JwtService {
 
     @Value("${jwt.secret}")
@@ -40,7 +42,6 @@ public class JwtService {
     public String generateToken(User user) {
 
         Map<String, Object> claims = new HashMap<>();
-
         claims.put("id", user.getId());
         claims.put("email", user.getEmail());
         claims.put("role", user.getRole().name());
@@ -49,11 +50,7 @@ public class JwtService {
                 .claims(claims)
                 .subject(user.getEmail())
                 .issuedAt(new Date())
-                .expiration(
-                        new Date(
-                                System.currentTimeMillis() + expiration
-                        )
-                )
+                .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(signingKey, SignatureAlgorithm.HS256)
                 .compact();
     }
@@ -63,27 +60,27 @@ public class JwtService {
     }
 
     public String extractRole(String token) {
-        return extractClaims(token)
-                .get("role", String.class);
+        return extractClaims(token).get("role", String.class);
     }
 
     public Long extractUserId(String token) {
-        return extractClaims(token)
-                .get("id", Long.class);
+        return extractClaims(token).get("id", Long.class);
     }
 
     public boolean isTokenValid(String token) {
-        return !isTokenExpired(token);
+        try {
+            return !isTokenExpired(token);
+        } catch (JwtException | IllegalArgumentException ex) {
+            log.warn("Token validation failed: {}", ex.getMessage());
+            return false;
+        }
     }
 
     private boolean isTokenExpired(String token) {
-        return extractClaims(token)
-                .getExpiration()
-                .before(new Date());
+        return extractClaims(token).getExpiration().before(new Date());
     }
 
     private Claims extractClaims(String token) {
-
         return Jwts.parser()
                 .verifyWith(signingKey)
                 .build()

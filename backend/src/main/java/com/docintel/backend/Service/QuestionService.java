@@ -12,6 +12,7 @@ import com.docintel.backend.Repository.ChatMessageRepository;
 import com.docintel.backend.Repository.ChatSessionRepository;
 import com.docintel.backend.Repository.PdfRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -26,6 +27,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class QuestionService {
 
     private final PdfRepository pdfRepository;
@@ -33,6 +35,7 @@ public class QuestionService {
     private final ChatMessageRepository chatMessageRepository;
     private final VectorStore vectorStore;
     private final LlmService llmService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ChatSession createSession(User currentUser) {
         return createSession(currentUser, "New Chat");
@@ -144,6 +147,7 @@ public class QuestionService {
                         SearchRequest.builder()
                                 .query(request.getQuestion())
                                 .topK(3)
+                                .similarityThreshold(0.5)
                                 .filterExpression(filterExpression)
                                 .build()
                 );
@@ -279,40 +283,12 @@ public class QuestionService {
                 .collect(Collectors.joining("\n"));
     }
 
-    private String serializeCitations(
-            List<QuestionResponse.Citation> citations
-    ) {
-        return citations.stream()
-                .map(citation -> "{\"documentId\":" + citation.documentId()
-                        + ",\"fileName\":" + quoteJson(citation.fileName())
-                        + ",\"pageNumber\":" + citation.pageNumber()
-                        + ",\"snippet\":" + quoteJson(citation.snippet())
-                        + "}")
-                .collect(Collectors.joining(",", "[", "]"));
-    }
-
-    private String quoteJson(String value) {
-        StringBuilder escaped = new StringBuilder("\"");
-
-        for (char character : value.toCharArray()) {
-            switch (character) {
-                case '"' -> escaped.append("\\\"");
-                case '\\' -> escaped.append("\\\\");
-                case '\b' -> escaped.append("\\b");
-                case '\f' -> escaped.append("\\f");
-                case '\n' -> escaped.append("\\n");
-                case '\r' -> escaped.append("\\r");
-                case '\t' -> escaped.append("\\t");
-                default -> {
-                    if (character < 0x20) {
-                        escaped.append(String.format("\\u%04x", (int) character));
-                    } else {
-                        escaped.append(character);
-                    }
-                }
-            }
+    private String serializeCitations(List<QuestionResponse.Citation> citations) {
+        try {
+            return objectMapper.writeValueAsString(citations);
+        } catch (JsonProcessingException ex) {
+            log.warn("Failed to serialize citations, storing empty array", ex);
+            return "[]";
         }
-
-        return escaped.append('"').toString();
     }
 }

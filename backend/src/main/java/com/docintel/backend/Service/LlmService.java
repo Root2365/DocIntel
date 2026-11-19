@@ -12,14 +12,13 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import lombok.extern.slf4j.Slf4j;
+
 @Service
+@Slf4j
 public class LlmService {
 
-    private static final String OLLAMA_URL =
-            "http://localhost:11434/api/generate";
-
-    private final RestTemplate restTemplate =
-            new RestTemplate();
+    private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${docintel.ai.provider:ollama}")
     private String provider;
@@ -27,39 +26,26 @@ public class LlmService {
     @Value("${gemini.api-key:}")
     private String geminiApiKey;
 
-    @Value("${gemini.base-url:}")
+    @Value("${gemini.base-url:https://generativelanguage.googleapis.com/v1beta/openai/chat/completions}")
     private String geminiBaseUrl;
 
-    public String generateAnswer(
-            String context,
-            String question
-    ) {
+    @Value("${gemini.model:gemini-2.0-flash}")
+    private String geminiModel;
 
-        return generateAnswer(
-                context,
-                question,
-                null
-        );
+    @Value("${ollama.base-url:http://localhost:11434}")
+    private String ollamaBaseUrl;
+
+    public String generateAnswer(String context, String question) {
+        return generateAnswer(context, question, null);
     }
 
-    public String generateAnswer(
-            String context,
-            String question,
-            String conversationHistory
-    ) {
+    public String generateAnswer(String context, String question, String conversationHistory) {
 
-        String historySection =
-                conversationHistory == null
-                        || conversationHistory.isBlank()
-                        ? ""
-                        : """
+        String historySection = (conversationHistory == null || conversationHistory.isBlank())
+                ? ""
+                : "\n\nConversation History:\n" + conversationHistory;
 
-                        Conversation History:
-                        """
-                        + conversationHistory;
-
-        String prompt =
-                """
+        String prompt = """
                 You are DocIntel AI assistant.
 
                 Answer the user's question ONLY using information found inside <document_context>.
@@ -80,189 +66,83 @@ public class LlmService {
                 <document_context>
                 """
                 + context
-                + """
-
-                </document_context>
-                """
+                + "\n</document_context>"
                 + historySection
-                + """
-
-                <user_question>
-                """
+                + "\n\n<user_question>\n"
                 + question
-                + """
-
-                </user_question>
-                """;
+                + "\n</user_question>";
 
         try {
-
             if ("gemini".equalsIgnoreCase(provider)
                     && geminiApiKey != null
                     && !geminiApiKey.isBlank()) {
-
-                return callGemini(prompt);
+                return callGeminiOpenAI(prompt);
             }
-
             return callOllama(prompt);
-
         } catch (Exception ex) {
-
-            System.err.println(
-                    "AI provider unavailable. Using fallback answer."
-            );
-
-            return buildFallbackAnswer(
-                    context,
-                    question
-            );
+            log.error("AI provider [{}] failed to generate answer: {}", provider, ex.getMessage(), ex);
+            return "I'm sorry, the AI service is currently unavailable. Please try again later.";
         }
     }
 
+    // --- Gemini via OpenAI-compatible endpoint ---
+    private String callGeminiOpenAI(String prompt) {
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(geminiApiKey);
+
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("role", "user");
+        message.put("content", prompt);
+
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("model", geminiModel);
+        request.put("messages", List.of(message));
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> response = restTemplate
+                .exchange(geminiBaseUrl, HttpMethod.POST, entity, Map.class)
+                .getBody();
+
+        if (response == null) {
+            throw new RuntimeException("Empty response from Gemini OpenAI endpoint.");
+        }
+
+        List<?> choices = (List<?>) response.get("choices");
+        if (choices == null || choices.isEmpty()) {
+            throw new RuntimeException("No choices returned from Gemini OpenAI endpoint.");
+        }
+
+        Map<?, ?> choice  = (Map<?, ?>) choices.get(0);
+        Map<?, ?> msgObj  = (Map<?, ?>) choice.get("message");
+
+        if (msgObj == null || msgObj.get("content") == null) {
+            throw new RuntimeException("Missing message.content in Gemini response.");
+        }
+
+        return msgObj.get("content").toString().trim();
+    }
+
+    // --- Ollama local endpoint ---
     private String callOllama(String prompt) {
 
-        Map<String, Object> request =
-                new LinkedHashMap<>();
+        String ollamaUrl = ollamaBaseUrl + "/api/generate";
 
+        Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", "llama3.2");
         request.put("prompt", prompt);
         request.put("stream", false);
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> response =
-                restTemplate.postForObject(
-                        OLLAMA_URL,
-                        request,
-                        Map.class
-                );
+        Map<String, Object> response = restTemplate.postForObject(ollamaUrl, request, Map.class);
 
-        if (response != null
-                && response.containsKey("response")) {
-
-            return response.get("response")
-                    .toString()
-                    .trim();
+        if (response != null && response.containsKey("response")) {
+            return response.get("response").toString().trim();
         }
 
-        throw new RuntimeException(
-                "Invalid response received from Ollama."
-        );
-    }
-
-    private String callGemini(String prompt) {
-
-        HttpHeaders headers =
-                new HttpHeaders();
-
-        headers.setContentType(
-                MediaType.APPLICATION_JSON
-        );
-
-        headers.setBearerAuth(
-                geminiApiKey
-        );
-
-        Map<String, Object> textPart =
-                new LinkedHashMap<>();
-        textPart.put("text", prompt);
-
-        Map<String, Object> content =
-                new LinkedHashMap<>();
-        content.put(
-                "parts",
-                List.of(textPart)
-        );
-
-        Map<String, Object> request =
-                new LinkedHashMap<>();
-        request.put(
-                "contents",
-                List.of(content)
-        );
-
-        HttpEntity<Map<String, Object>> entity =
-                new HttpEntity<>(
-                        request,
-                        headers
-                );
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> response =
-                restTemplate.exchange(
-                        geminiBaseUrl,
-                        HttpMethod.POST,
-                        entity,
-                        Map.class
-                ).getBody();
-
-        if (response == null) {
-            throw new RuntimeException(
-                    "Empty Gemini response."
-            );
-        }
-
-        List<?> candidates =
-                (List<?>) response.get("candidates");
-
-        if (candidates == null
-                || candidates.isEmpty()) {
-
-            throw new RuntimeException(
-                    "No Gemini candidates returned."
-            );
-        }
-
-        Map<?, ?> candidate =
-                (Map<?, ?>) candidates.get(0);
-
-        Map<?, ?> contentMap =
-                (Map<?, ?>) candidate.get("content");
-
-        List<?> parts =
-                (List<?>) contentMap.get("parts");
-
-        if (parts == null
-                || parts.isEmpty()) {
-
-            throw new RuntimeException(
-                    "No Gemini text returned."
-            );
-        }
-
-        Map<?, ?> firstPart =
-                (Map<?, ?>) parts.get(0);
-
-        return firstPart.get("text")
-                .toString()
-                .trim();
-    }
-
-    private String buildFallbackAnswer(
-            String context,
-            String question
-    ) {
-
-        if (context == null
-                || context.isBlank()) {
-
-            return """
-                    AI service is currently unavailable.
-
-                    I cannot find information regarding this in the uploaded documents.
-                    """;
-        }
-
-        String summary =
-                context.length() > 500
-                        ? context.substring(0, 500) + "..."
-                        : context;
-
-        return """
-                AI service is currently unavailable.
-
-                Most relevant document content:
-
-                """
-                + summary;
+        throw new RuntimeException("Invalid response received from Ollama.");
     }
 }
